@@ -1,23 +1,49 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
 const Database = require('better-sqlite3');
+const fs = require('fs');
+const session = require('express-session');
+const path = require('path');
 
 const app = express();
 const PORT = 3000;
 
 const db = new Database('sns.db');
 
-// テーブル初期化（channel カラムを追加）
+// ログイン認証チェック用ミドルウェア
+const requireAuth = (req, res, next) => {
+  if (!req.session.user) {
+    return res.redirect('/login');
+  }
+  next();
+};
+
+// セッション設定
+app.use(session({
+  secret: 'secret-key-alh-sns',
+  resave: false,
+  saveUninitialized: false
+}));
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static('public'));
+
+// DBテーブル初期化
 db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    username TEXT NOT NULL,
     content TEXT NOT NULL,
-    channel TEXT DEFAULT 'General',
     likes INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
+  );
 `);
 
 app.use(express.urlencoded({ extended: true }));
@@ -39,19 +65,19 @@ app.get('/posts', (req, res) => {
   res.send(renderFeedHtml(posts));
 });
 
-// 新規投稿処理
-app.post('/posts', (req, res) => {
-  const { user, content, channel } = req.body;
-  const targetChannel = channel || 'General';
-
-  if (content && content.trim() !== '') {
-    const stmt = db.prepare('INSERT INTO posts (user, content, channel) VALUES (?, ?, ?)');
-    stmt.run(user || "匿名社員", content, targetChannel);
+// 投稿機能（ログイン中のusernameを適用）
+app.post('/posts', requireAuth, (req, res) => {
+  const { channel, content } = req.body;
+  const username = req.session.user.username;
+  
+  if (content.trim()) {
+    const stmt = db.prepare('INSERT INTO posts (channel, username, content) VALUES (?, ?, ?)');
+    stmt.run(channel, username, content);
   }
   
-  // 投稿されたチャンネルのタイムラインのみを再取得して返却
-  const posts = db.prepare('SELECT * FROM posts WHERE channel = ? ORDER BY id DESC').all(targetChannel);
-  res.send(renderFeedHtml(posts));
+  // タイムラインの再読み込みレスポンス（既存処理）
+  const posts = db.prepare('SELECT * FROM posts WHERE channel = ? ORDER BY id DESC').all(channel);
+  res.send(renderTimeline(posts));
 });
 
 // いいね機能
@@ -127,4 +153,45 @@ function renderFeedHtml(postsList) {
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
+});
+
+// メイン画面（ログイン必須）
+app.get('/', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'index.html'));
+});
+
+// ログイン画面
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'login.html'));
+});
+
+// アカウント新規登録
+app.post('/register', (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const stmt = db.prepare('INSERT INTO users (username, password) VALUES (?, ?)');
+    stmt.run(username, password);
+    res.send('<p style="color: #4ade80;">アカウント作成成功！<a href="/login">ログイン画面へ</a></p>');
+  } catch (err) {
+    res.send('<p style="color: #f87171;">そのユーザー名は既に使用されています。</p>');
+  }
+});
+
+// ログイン処理
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE username = ? AND password = ?').get(username, password);
+  
+  if (user) {
+    req.session.user = { id: user.id, username: user.username };
+    res.redirect('/');
+  } else {
+    res.send('<p style="color: #f87171;">ユーザー名またはパスワードが正しくありません。<a href="/login">戻る</a></p>');
+  }
+});
+
+// ログアウト処理
+app.get('/logout', (req, res) => {
+  req.session.destroy();
+  res.redirect('/login');
 });
