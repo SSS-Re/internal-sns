@@ -1,15 +1,44 @@
 const express = require('express');
-const { Pool } = require('pg');
 const session = require('express-session');
 const path = require('path');
 
 const app = express();
 
-// PostgreSQL接続設定（環境変数 DATABASE_URL またはローカル用設定）
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
-});
+// --- データベース接続設定 ---
+// DATABASE_URL（Render）が存在する場合はPostgreSQL、なければローカル用SQLite（better-sqlite3）を使用
+let dbHandler;
+
+if (process.env.DATABASE_URL) {
+  // 【Render環境】PostgreSQLを使用
+  const { Pool } = require('pg');
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+  
+  dbHandler = {
+    query: (text, params) => pool.query(text, params)
+  };
+} else {
+  // 【PCローカル環境】SQLiteを使用
+  const Database = require('better-sqlite3');
+  const sqlite = new Database('sns.db');
+  
+  dbHandler = {
+    query: async (text, params = []) => {
+      // PostgreSQLの $1, $2 プレースホルダーを SQLite用の ? に変換
+      let sql = text.replace(/\$\d+/g, '?');
+      
+      if (sql.trim().toUpperCase().startsWith('SELECT')) {
+        const rows = sqlite.prepare(sql).all(...params);
+        return { rows };
+      } else {
+        const info = sqlite.prepare(sql).run(...params);
+        return { rows: [], rowCount: info.changes };
+      }
+    }
+  };
+}
 
 // EJSテンプレートエンジンの設定
 app.set('view engine', 'html');
@@ -28,25 +57,44 @@ app.use(express.static('public'));
 // DBテーブル初期化関数
 async function initDB() {
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS posts (
-        id SERIAL PRIMARY KEY,
-        channel VARCHAR(255) NOT NULL,
-        username VARCHAR(255) NOT NULL,
-        content TEXT NOT NULL,
-        likes INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    console.log('Database initialized');
+    if (process.env.DATABASE_URL) {
+      // PostgreSQL用テーブル作成
+      await dbHandler.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username VARCHAR(255) UNIQUE NOT NULL,
+          password VARCHAR(255) NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS posts (
+          id SERIAL PRIMARY KEY,
+          channel VARCHAR(255) NOT NULL,
+          username VARCHAR(255) NOT NULL,
+          content TEXT NOT NULL,
+          likes INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    } else {
+      // SQLite用テーブル作成
+      await dbHandler.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS posts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          channel TEXT NOT NULL,
+          username TEXT NOT NULL,
+          content TEXT NOT NULL,
+          likes INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    }
+    console.log('Database initialized successfully');
   } catch (err) {
-    console.error('Error initializing database', err);
+    console.error('Error initializing database:', err);
   }
 }
 initDB();
@@ -113,7 +161,7 @@ app.get('/login', (req, res) => {
 app.post('/register', async (req, res) => {
   const { username, password } = req.body;
   try {
-    await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [username, password]);
+    await dbHandler.query('INSERT INTO users (username, password) VALUES ($1, $2)', [username, password]);
     res.send('<p style="color: #4ade80;">アカウント作成成功！ <a href="/login" style="color: #38bdf8;">ログイン画面へ</a></p>');
   } catch (err) {
     res.send('<p style="color: #f87171;">そのユーザー名は既に使用されています。</p>');
@@ -124,7 +172,7 @@ app.post('/register', async (req, res) => {
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
   try {
-    const result = await pool.query('SELECT * FROM users WHERE username = $1 AND password = $2', [username, password]);
+    const result = await dbHandler.query('SELECT * FROM users WHERE username = $1 AND password = $2', [username, password]);
     const user = result.rows[0];
     
     if (user) {
@@ -148,7 +196,7 @@ app.get('/logout', (req, res) => {
 app.get('/timeline', requireAuth, async (req, res) => {
   const channel = req.query.channel || 'General';
   try {
-    const result = await pool.query('SELECT * FROM posts WHERE channel = $1 ORDER BY id DESC', [channel]);
+    const result = await dbHandler.query('SELECT * FROM posts WHERE channel = $1 ORDER BY id DESC', [channel]);
     res.send(renderTimeline(result.rows));
   } catch (err) {
     res.send('<p style="color: #f87171;">読み込みエラーが発生しました。</p>');
@@ -161,25 +209,25 @@ app.post('/posts', requireAuth, async (req, res) => {
   const username = req.session.user.username;
   
   if (content && content.trim()) {
-    await pool.query('INSERT INTO posts (channel, username, content) VALUES ($1, $2, $3)', [channel, username, content]);
+    await dbHandler.query('INSERT INTO posts (channel, username, content) VALUES ($1, $2, $3)', [channel, username, content]);
   }
   
-  const result = await pool.query('SELECT * FROM posts WHERE channel = $1 ORDER BY id DESC', [channel]);
+  const result = await dbHandler.query('SELECT * FROM posts WHERE channel = $1 ORDER BY id DESC', [channel]);
   res.send(renderTimeline(result.rows));
 });
 
 // いいね機能
 app.post('/posts/:id/like', requireAuth, async (req, res) => {
   const postId = req.params.id;
-  await pool.query('UPDATE posts SET likes = likes + 1 WHERE id = $1', [postId]);
-  const result = await pool.query('SELECT * FROM posts WHERE id = $1', [postId]);
+  await dbHandler.query('UPDATE posts SET likes = likes + 1 WHERE id = $1', [postId]);
+  const result = await dbHandler.query('SELECT * FROM posts WHERE id = $1', [postId]);
   res.send(renderTimeline(result.rows));
 });
 
 // 削除機能
 app.delete('/posts/:id', requireAuth, async (req, res) => {
   const postId = req.params.id;
-  await pool.query('DELETE FROM posts WHERE id = $1', [postId]);
+  await dbHandler.query('DELETE FROM posts WHERE id = $1', [postId]);
   res.send('');
 });
 
