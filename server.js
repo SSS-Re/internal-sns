@@ -58,7 +58,7 @@ app.use(express.static('public'));
 async function initDB() {
   try {
     if (process.env.DATABASE_URL) {
-      // PostgreSQL用テーブル作成
+      // PostgreSQL用テーブル作成（複数文をまとめて実行可能）
       await dbHandler.query(`
         CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY,
@@ -75,13 +75,15 @@ async function initDB() {
         );
       `);
     } else {
-      // SQLite用テーブル作成
+      // SQLite用テーブル作成（1文ずつ分けて実行）
       await dbHandler.query(`
         CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           username TEXT UNIQUE NOT NULL,
           password TEXT NOT NULL
-        );
+        )
+      `);
+      await dbHandler.query(`
         CREATE TABLE IF NOT EXISTS posts (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           channel TEXT NOT NULL,
@@ -89,7 +91,7 @@ async function initDB() {
           content TEXT NOT NULL,
           likes INTEGER DEFAULT 0,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
+        )
       `);
     }
     console.log('Database initialized successfully');
