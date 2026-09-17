@@ -166,61 +166,43 @@
 
   <h1>社内SNS ワークスペース</h1>
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: #1e293b; padding: 12px; border-radius: 8px;">
-      <span>ログイン中: <strong><span id="current-user">ユーザー</span></strong></span>
+      <div>ログイン中: <strong style="color: #38bdf8;"><%= user.username %></strong></div>
       <a href="/logout" style="color: #f87171; text-decoration: none; font-size: 0.9em;">ログアウト</a>
     </div>
 
   <div class="layout">
     <!-- サイドバー：チャンネル選択 -->
     <div class="sidebar">
-      <div class="channel-title">チャンネル</div>
-      
-      <!-- hx-get で該当チャンネルのタイムラインのみを取得 -->
-      <button class="channel-btn active" 
-              hx-get="/posts?channel=General" 
-              hx-target="#timeline" 
-              onclick="updateChannelState('General', this)">
-        # General
-      </button>
-
-      <button class="channel-btn" 
-              hx-get="/posts?channel=e-Learning" 
-              hx-target="#timeline" 
-              onclick="updateChannelState('e-Learning', this)">
-        # e-Learning
-      </button>
-
-      <button class="channel-btn" 
-              hx-get="/posts?channel=月締め処理" 
-              hx-target="#timeline" 
-              onclick="updateChannelState('月締め処理', this)">
-        # 月締め処理
-      </button>
+      <h3 style="margin-top: 0; color: #94a3b8; font-size: 0.9em;">チャンネル</h3>
+        <button class="channel-btn active" 
+                hx-get="/timeline?channel=General" 
+                hx-target="#timeline" 
+                onclick="selectChannel(this, 'General')"># General</button>
+        <button class="channel-btn" 
+                hx-get="/timeline?channel=e-Learning" 
+                hx-target="#timeline" 
+                onclick="selectChannel(this, 'e-Learning')"># e-Learning</button>
+        <button class="channel-btn" 
+                hx-get="/timeline?channel=月締め処理" 
+                hx-target="#timeline" 
+                onclick="selectChannel(this, '月締め処理')"># 月締め処理</button>
     </div>
 
     <!-- メインエリア -->
     <div class="main-content">
       <!-- 投稿フォーム -->
       <div class="card">
-        <form hx-post="/posts" 
-              hx-target="#timeline" 
-              hx-swap="innerHTML" 
-              hx-include="[name='channel']"
-              hx-on::after-request="this.querySelector('textarea').value=''">
-          
-          <input type="hidden" id="channel-input" name="channel" value="General">
-          
-          <div>
-            <label>投稿者名</label>
-            <input type="text" name="user" value="自分">
+        <h3 style="margin-top: 0; font-size: 1em;">メッセージ投稿 (<span id="channel-title" style="color: #38bdf8;"># General</span>)</h3>
+        <form hx-post="/posts" hx-target="#timeline" hx-on::after-request="this.reset()">
+          <!-- 選択中のチャンネルを送信するhidden input -->
+          <input type="hidden" name="channel" id="current-channel" value="General">
+    
+          <div style="margin-bottom: 12px; font-size: 0.9em; color: #94a3b8;">
+            投稿者: <strong style="color: #f8fafc;"><%= user.username %></strong>
           </div>
-          <div style="margin-top: 14px;">
-            <label>メッセージ (<span id="current-channel-label" style="color: var(--primary-color);">#General</span> へ投稿)</label>
-            <textarea name="content" placeholder="投稿内容を入力..." required></textarea>
-          </div>
-          <div style="margin-top: 14px; text-align: right;">
-            <button type="submit" class="btn-primary">投稿する</button>
-          </div>
+
+          <textarea name="content" placeholder="メッセージを入力..." required></textarea>
+          <button type="submit" class="btn-submit">投稿する</button>
         </form>
       </div>
 
@@ -235,12 +217,20 @@
   </div>
 
   <script>
-    // 見た目のボタンアクティブ化と隠しフォームの更新のみを極小のJSで行う
-    function updateChannelState(name, el) {
+    function selectChannel(btnElement, channelName) {
+      // すべてのボタンから active クラスを外す
       document.querySelectorAll('.channel-btn').forEach(btn => btn.classList.remove('active'));
-      el.classList.add('active');
-      document.getElementById('channel-input').value = name;
-      document.getElementById('current-channel-label').textContent = '#' + name;
+      // クリックされたボタンに active クラスを付与
+      btnElement.classList.add('active');
+    
+      // 投稿フォームの送信先チャンネルを更新
+      document.getElementById('current-channel').value = channelName;
+      // タイトル表示の更新
+      document.getElementById('channel-title').textContent = '#' + channelName;
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
     }
   </script>
 
