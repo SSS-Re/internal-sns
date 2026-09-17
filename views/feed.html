@@ -1,0 +1,35 @@
+<!-- views/feed.html -->
+<div class="post-item" id="post-{{ID}}" style="border-bottom: 1px solid #334155; padding: 16px 0; transition: all 0.3s ease;">
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <div style="font-weight: 600; font-size: 0.95rem; color: #f8fafc;">
+      {{USER}} <span style="font-weight: normal; color: #64748b; font-size: 0.8rem; margin-left: 6px;">・{{CREATED_AT}}</span>
+    </div>
+    <!-- 削除ボタン -->
+    <button 
+      hx-delete="/posts/{{ID}}" 
+      hx-target="closest .post-item" 
+      hx-swap="outerHTML swap:0.3s"
+      hx-confirm="この投稿を削除しますか？"
+      style="background: transparent; color: #f43f5e; border: none; cursor: pointer; font-size: 0.8rem; opacity: 0.8; transition: opacity 0.2s;"
+      onmouseover="this.style.opacity='1'" 
+      onmouseout="this.style.opacity='0.8'">
+      削除
+    </button>
+  </div>
+
+  <!-- 改行保持(white-space: pre-wrap)とURLリンク化の反映箇所 -->
+  <div style="margin-top: 8px; color: #cbd5e1; font-size: 0.95rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word;">
+    {{CONTENT}}
+  </div>
+
+  <!-- いいねボタン -->
+  <div style="margin-top: 12px;">
+    <button 
+      hx-post="/posts/{{ID}}/like" 
+      hx-target="this" 
+      hx-swap="outerHTML"
+      style="background-color: #0f172a; color: #38bdf8; border: 1px solid #334155; padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.2s;">
+      👍 いいね <span>{{LIKES}}</span>
+    </button>
+  </div>
+</div>
