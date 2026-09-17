@@ -130,6 +130,23 @@
     button.btn-primary:hover { background-color: var(--primary-hover); color: #fff; }
     .htmx-swapping { opacity: 0; transform: translateY(-10px); transition: all 0.3s ease-out; }
 
+    .btn-submit {
+      background-color: #0284c7 !important; /* ボタンの背景色（青） */
+      color: #ffffff !important;           /* 文字の色（白） */
+      border: none !important;              /* 枠線を消す */
+      padding: 10px 16px !important;        /* ボタンの内側余白（上下 左右） */
+      border-radius: 6px !important;        /* 角の丸み */
+      cursor: pointer !important;           /* ホバー時のマウスカーソル */
+      font-weight: bold !important;         /* 文字を太字に */
+      width: 100% !important;               /* 横幅いっぱいに広げる場合 */
+      margin-top: 8px !important;           /* 上の入力欄との間隔 */
+    }
+
+    /* ホバー（マウスを乗せた時）の色 */
+    .btn-submit:hover {
+      background-color: #0369a1 !important;
+    }
+
     /* スマホ向けレスポンシブ対応 */
     @media (max-width: 768px) {
       body {
